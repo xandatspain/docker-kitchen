@@ -1,0 +1,120 @@
+#!/usr/bin/python3
+
+import subprocess
+import sys
+import json
+
+
+class DockerContainerInfo:
+    def __init__(self, container_id='', container_name='', running=False):
+        self.container_id = container_id
+        self.container_name = container_name
+        self.running = running
+
+
+def find_container_by_name(name=''):
+    output = None
+    
+    try:
+        o = subprocess.check_output(['docker', 'inspect', name], universal_newlines=True, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        return None
+
+    oj = json.loads(o)
+
+    if len(oj) > 0:
+        c_id = oj[0]['Id']
+        c_name = name
+        c_running = False
+        if 'State' in oj[0]:
+            if 'Running' in oj[0]['State']:
+                c_running = oj[0]['State']['Running']
+
+        output = DockerContainerInfo(c_id, c_name, c_running)
+
+    return output
+
+
+def remove_exited_containers(name=''):
+    o = subprocess.check_output(['docker', 'ps', '-a'], universal_newlines=True)
+    lines = o.split('\n')
+    for line in lines:
+        elems = line.split()
+        if len(elems) > 2:
+            c_name = elems[len(elems) - 1]
+            if c_name == name:
+                c_id = elems[0]
+                subprocess.call(['docker', 'rm', c_id])
+
+
+def main():
+    container_name = '{{image_name}}'
+    container_data_name = '{{image_data_name}}'
+
+    remove_exited_containers(container_data_name)
+
+    debug = False
+    id = ''
+    id_data = ''
+
+    for arg in sys.argv:
+        if arg == 'debug':
+            debug = True
+
+    main_container_info = find_container_by_name(container_name)
+
+    data_container_info = ''
+    if container_data_name:
+        data_container_info = find_container_by_name(container_data_name)
+
+    if data_container_info:
+        id_data = data_container_info.container_id
+    else:
+        # create data container
+        docker_data_process = ['docker', 'run', '-d', '--name']
+        docker_data_process += ['{{image_data_name}}']
+        {{#mount_dirs}}
+        docker_data_process += ['-v', '{{source}}:{{target}}']
+        {{/mount_dirs}}
+        docker_data_process += ['busybox']
+        subprocess.call(docker_data_process)
+
+    if main_container_info and main_container_info.running:
+        print('Container ' + container_name + ' is already running. Exiting.')
+        return
+    if main_container_info and not main_container_info.running:
+        subprocess.call(['docker', 'rm', main_container_info.container_id])
+
+    
+    docker_process = ['docker', 'run', '--name', container_name]
+
+    if debug:
+        docker_process += ['-i', '-t']
+    else:
+        docker_process += ['-d']
+
+    {{#exposed_ports}}
+    docker_process += ['-p', '{{local_port}}:{{port}}/{{protocol}}']
+    {{/exposed_ports}}
+    docker_process += ['-p', '{{ssh_port}}:22/tcp']
+
+    if container_data_name:
+        docker_process += ['--volumes-from', container_data_name]
+
+    {{#links}}
+    docker_process += ['--link', '{{container}}:{{alias}}']
+    {{/links}}
+
+    docker_process += [container_name]
+
+    subprocess.call(docker_process)
+
+if __name__ == '__main__':
+    main()
+
+
+
+
+
+
+

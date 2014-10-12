@@ -1,0 +1,3 @@
+#!/bin/bash
+
+ssh -p{{ssh_port}} {{internal_user}}@localhost

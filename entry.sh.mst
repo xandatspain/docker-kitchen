@@ -1,0 +1,4 @@
+#!/bin/bash
+service ssh start
+
+su {{internal_user}} -c /opt/run/script.sh

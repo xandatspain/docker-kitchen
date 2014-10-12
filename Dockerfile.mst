@@ -1,0 +1,46 @@
+FROM {{{base_image}}}
+
+{{#sources}}
+    RUN echo "{{{.}}}" >> /etc/apt/sources.list
+{{/sources}}
+
+{{#keys}}
+    RUN apt-key adv --recv-keys --keyserver {{{keyserver}}} {{{key}}}
+{{/keys}}
+
+RUN apt-get update
+
+RUN apt-get install -y --force-yes ssh
+
+RUN echo "%sudo ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+RUN adduser --disabled-password --gecos '' --home /home/{{{internal_user}}} {{{internal_user}}}
+RUN usermod -a -G sudo {{{internal_user}}}
+RUN mkdir /home/{{{internal_user}}}/.ssh
+
+ADD key.pub /tmp/key.pub
+RUN touch /home/{{{internal_user}}}/.ssh/authorized_keys
+RUN chown {{{internal_user}}}:{{{internal_user}}} /home/{{{internal_user}}}/.ssh/authorized_keys
+RUN echo "$(cat /tmp/key.pub)" >> /home/{{{internal_user}}}/.ssh/authorized_keys
+RUN chmod 600 /home/{{{internal_user}}}/.ssh/authorized_keys
+
+{{#packages}}
+    RUN apt-get install -y --force-yes {{{.}}}
+{{/packages}}
+
+{{#custom_commands}}
+    {{{.}}}
+{{/custom_commands}}
+
+ADD entry.sh /opt/run/entry.sh
+RUN chmod 755 /opt/run/entry.sh
+
+ADD script.sh /opt/run/script.sh
+RUN chmod 755 /opt/run/script.sh
+
+ENTRYPOINT /opt/run/entry.sh
+
+EXPOSE 22
+
+{{#exposed_ports}}
+    EXPOSE {{{port}}}/{{{protocol}}}
+{{/exposed_ports}}
